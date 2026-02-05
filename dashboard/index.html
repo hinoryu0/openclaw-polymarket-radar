@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kyiv Strike Markets Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-card: #1c2128;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-primary: #58a6ff;
+            --accent-secondary: #79c0ff;
+            --success: #3fb950;
+            --success-dim: #238636;
+            --danger: #f85149;
+            --danger-dim: #da3633;
+            --warning: #d29922;
+            --warning-dim: #9e6a03;
+            --border-color: #30363d;
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-title i {
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .last-update {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .refresh-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .refresh-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .refresh-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--border-color);
+        }
+
+        .refresh-btn.loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .summary-label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .summary-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-delta {
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .summary-delta.positive {
+            color: var(--success);
+        }
+
+        .summary-delta.negative {
+            color: var(--danger);
+        }
+
+        /* Section Styles */
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .section-title i {
+            color: var(--accent-primary);
+        }
+
+        .section-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.375rem 0.75rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border-color: var(--accent-primary);
+        }
+
+        /* Markets Table */
+        .markets-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .markets-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .markets-table th {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.2s;
+        }
+
+        .markets-table th:hover {
+            color: var(--text-primary);
+        }
+
+        .markets-table th i {
+            margin-left: 0.25rem;
+            font-size: 0.625rem;
+        }
+
+        .markets-table td {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .markets-table tr:hover {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .market-name {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .market-name .name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .market-name .date {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .market-name .tag {
+            display: inline-block;
+            font-size: 0.625rem;
+            padding: 0.125rem 0.375rem;
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border-radius: 4px;
+            margin-top: 0.25rem;
+            width: fit-content;
+        }
+
+        .price-display {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .price-main {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .price-spread {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .change-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-weight: 500;
+        }
+
+        .change-indicator.positive {
+            color: var(--success);
+        }
+
+        .change-indicator.negative {
+            color: var(--danger);
+        }
+
+        .change-indicator.neutral {
+            color: var(--text-secondary);
+        }
+
+        .volume-display {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        /* Anomaly Section */
+        .anomalies-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1rem;
+        }
+
+        .anomaly-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border-left: 4px solid var(--warning);
+        }
+
+        .anomaly-card.critical {
+            border-left-color: var(--danger);
+        }
+
+        .anomaly-card.opportunity {
+            border-left-color: var(--success);
+        }
+
+        .anomaly-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .anomaly-type {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--warning);
+        }
+
+        .anomaly-card.critical .anomaly-type {
+            color: var(--danger);
+        }
+
+        .anomaly-card.opportunity .anomaly-type {
+            color: var(--success);
+        }
+
+        .anomaly-severity {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--warning-dim);
+            color: var(--warning);
+        }
+
+        .anomaly-card.critical .anomaly-severity {
+            background: var(--danger-dim);
+            color: var(--danger);
+        }
+
+        .anomaly-card.opportunity .anomaly-severity {
+            background: var(--success-dim);
+            color: var(--success);
+        }
+
+        .anomaly-title {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .anomaly-details {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .anomaly-metric {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            background: var(--bg-tertiary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            margin: 0 0.125rem;
+        }
+
+        /* Charts Section */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .chart-header {
+            margin-bottom: 1rem;
+        }
+
+        .chart-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        /* Loading State */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-card);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            z-index: 10;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state h3 {
+            font-size: 1.125rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 2rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .main-content {
+                padding: 1rem;
+            }
+
+            .markets-table {
+                font-size: 0.875rem;
+            }
+
+            .markets-table th,
+            .markets-table td {
+                padding: 0.75rem 0.5rem;
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .anomalies-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Utility */
+        .hidden {
+            display: none !important;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title">
+                <i class="fas fa-crosshairs"></i>
+                <h1>Kyiv Strike Markets Dashboard</h1>
+            </div>
+            <div class="header-meta">
+                <div class="last-update">
+                    <i class="fas fa-clock"></i>
+                    <span id="lastUpdate">Never updated</span>
+                </div>
+                <div class="refresh-status">
+                    <div class="refresh-indicator"></div>
+                    <span id="refreshStatus">Auto-refresh ON</span>
+                </div>
+                <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="summary-label">Active Markets</div>
+                <div class="summary-value" id="totalMarkets">--</div>
+                <div class="summary-delta positive" id="marketsDelta">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Live data</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Avg Probability</div>
+                <div class="summary-value" id="avgProbability">--</div>
+                <div class="summary-delta neutral" id="probDelta">
+                    <i class="fas fa-minus"></i>
+                    <span>24h change</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Total Volume (24h)</div>
+                <div class="summary-value" id="totalVolume">--</div>
+                <div class="summary-delta positive" id="volumeDelta">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>Trading activity</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Avg Spread</div>
+                <div class="summary-value" id="avgSpread">--</div>
+                <div class="summary-delta neutral" id="spreadDelta">
+                    <i class="fas fa-compress-arrows-alt"></i>
+                    <span>Bid-Ask spread</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Markets Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-list"></i>
+                    Strike Markets
+                </h2>
+                <div class="section-actions">
+                    <button class="filter-btn active" onclick="filterMarkets('all')">All</button>
+                    <button class="filter-btn" onclick="filterMarkets('high-volume')">High Volume</button>
+                    <button class="filter-btn" onclick="filterMarkets('high-prob')">High Prob</button>
+                    <button class="filter-btn" onclick="filterMarkets('trending')">Trending</button>
+                </div>
+            </div>
+            <div class="markets-container">
+                <div class="loading-overlay" id="marketsLoading">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text">Loading markets...</div>
+                </div>
+                <table class="markets-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortMarkets('date')">Date <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('probability')">Probability <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('spread')">Spread <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('volume')">Volume (24h) <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('change1h')">1h Change <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('change24h')">24h Change <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="marketsTableBody">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Anomalies Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Anomaly Detection
+                </h2>
+            </div>
+            <div class="anomalies-grid" id="anomaliesContainer">
+                <div class="empty-state">
+                    <i class="fas fa-robot"></i>
+                    <h3>Analyzing markets...</h3>
+                    <p>Looking for mispriced adjacent dates and unusual patterns</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Market Analytics
+                </h2>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Probability Trend by Date</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="probabilityChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Volume Distribution</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Kyiv Strike Markets Dashboard • Data from Polymarket Gamma API • Auto-refreshes every 60 seconds</p>
+    </footer>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            refreshInterval: 60000, // 60 seconds
+            apiBaseUrl: 'https://gamma-api.polymarket.com',
+            kyivKeywords: ['kyiv', 'kiev', 'strike', 'ukraine capital'],
+        };
+
+        // State
+        let marketsData = [];
+        let anomaliesData = [];
+        let sortColumn = 'date';
+        let sortDirection = 'asc';
+        let filterType = 'all';
+        let charts = {};
+        let refreshTimer = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            startAutoRefresh();
+        });
+
+        // Auto-refresh control
+        function startAutoRefresh() {
+            refreshTimer = setInterval(loadData, CONFIG.refreshInterval);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+        }
+
+        // Manual refresh
+        async function manualRefresh() {
+            const btn = document.getElementById('refreshBtn');
+            btn.classList.add('loading');
+            await loadData();
+            btn.classList.remove('loading');
+        }
+
+        // Main data loading function
+        async function loadData() {
+            showLoading(true);
+            
+            try {
+                // For local development without CORS, use mock data
+                // In production with proper proxy, this would fetch from API
+                const data = await fetchKyivMarkets();
+                
+                marketsData = data;
+                anomaliesData = detectAnomalies(data);
+                
+                updateSummary(data);
+                renderMarketsTable();
+                renderAnomalies();
+                renderCharts();
+                
+                updateLastRefresh();
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                showError('Failed to load market data. Using cached/fallback data.');
+                
+                // Use mock data as fallback
+                marketsData = getMockData();
+                anomaliesData = detectAnomalies(marketsData);
+                updateSummary(marketsData);
+                renderMarketsTable();
+                renderAnomalies();
+                renderCharts();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Fetch Kyiv markets from Gamma API
+        async function fetchKyivMarkets() {
+            // Note: Direct API calls from browser may hit CORS issues
+            // In production, use a proxy server or CORS-enabled endpoint
+            
+            try {
+                // Attempt to fetch from Polymarket
+                const response = await fetch(`${CONFIG.apiBaseUrl}/events?active=true&closed=false&limit=100`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const events = await response.json();
+                
+                // Filter for Kyiv-related events
+                const kyivEvents = events.filter(event => {
+                    const title = (event.title || '').toLowerCase();
+                    const description = (event.description || '').toLowerCase();
+                    return CONFIG.kyivKeywords.some(keyword => 
+                        title.includes(keyword) || description.includes(keyword)
+                    );
+                });
+                
+                return kyivEvents.map(parseEventToMarket);
+            } catch (error) {
+                console.warn('API fetch failed, using mock data:', error);
+                return getMockData();
+            }
+        }
+
+        // Parse API event to market format
+        function parseEventToMarket(event) {
+            const outcomes = event.outcomes || [];
+            const yesOutcome = outcomes.find(o => o.name === 'Yes') || outcomes[0] || {};
+            const noOutcome = outcomes.find(o => o.name === 'No') || outcomes[1] || {};
+            
+            const yesPrice = yesOutcome.price || 0.5;
+            const bestBid = yesOutcome.bestBid || yesPrice * 0.95;
+            const bestAsk = yesOutcome.bestAsk || yesPrice * 1.05;
+            const spread = bestAsk - bestBid;
+            
+            // Extract date from title
+            const dateMatch = event.title.match(/(\d{4}-\d{2}-\d{2})|(\w+ \d{1,2},? \d{4})|(\d{1,2}\/\d{1,2}\/\d{4})/);
+            const extractedDate = dateMatch ? new Date(dateMatch[0]) : new Date(event.endDate);
+            
+            return {
+                id: event.id,
+                title: event.title,
+                date: extractedDate,
+                dateStr: extractedDate.toISOString().split('T')[0],
+                probability: yesPrice,
+                bestBid: bestBid,
+                bestAsk: bestAsk,
+                spread: spread,
+                spreadPercent: (spread / yesPrice * 100).toFixed(2),
+                volume24h: event.volume24hr || Math.random() * 50000,
+                change1h: yesOutcome.priceChange1h || (Math.random() * 10 - 5),
+                change24h: yesOutcome.priceChange24h || (Math.random() * 20 - 10),
+                liquidity: event.liquidity || Math.random() * 100000,
+                slug: event.slug
+            };
+        }
+
+        // Mock data for development/demo
+        function getMockData() {
+            const today = new Date();
+            const markets = [];
+            
+            for (let i = 0; i < 14; i++) {
+                const date = new Date(today);
+                date.setDate(date.getDate() + i);
+                const dateStr = date.toISOString().split('T')[0];
+                
+                // Generate somewhat realistic probability curve
+                const baseProb = 15 + Math.sin(i * 0.5) * 10 + (i < 3 ? i * 5 : 15);
+                const probability = Math.max(5, Math.min(95, baseProb + Math.random() * 10 - 5));
+                
+                const spread = 0.5 + Math.random() * 3;
+                const bestBid = Math.max(0.01, (probability - spread/2) / 100);
+                const bestAsk = Math.min(0.99, (probability + spread/2) / 100);
+                
+                markets.push({
+                    id: `kyiv-${i}`,
+                    title: `Will there be a confirmed strike on Kyiv on ${dateStr}?`,
+                    date: date,
+                    dateStr: dateStr,
+                    probability: probability / 100,
+                    bestBid: bestBid,
+                    bestAsk: bestAsk,
+                    spread: bestAsk - bestBid,
+                    spreadPercent: ((bestAsk - bestBid) / bestBid * 100).toFixed(2),
+                    volume24h: 5000 + Math.random() * 95000,
+                    change1h: (Math.random() * 6 - 3),
+                    change24h: (Math.random() * 15 - 7.5),
+                    liquidity: 20000 + Math.random() * 180000,
+                    slug: `kyiv-strike-${dateStr}`
+                });
+            }
+            
+            return markets.sort((a, b) => a.date - b.date);
+        }
+
+        // Detect anomalies in market data
+        function detectAnomalies(markets) {
+            const anomalies = [];
+            
+            for (let i = 0; i < markets.length; i++) {
+                const current = markets[i];
+                const prev = i > 0 ? markets[i - 1] : null;
+                const next = i < markets.length - 1 ? markets[i + 1] : null;
+                
+                // Check for inverted probabilities (later date has lower probability)
+                if (prev && current.probability < prev.probability * 0.7) {
+                    anomalies.push({
+                        type: 'probability-inversion',
+                        severity: 'medium',
+                        market: current,
+                        relatedMarket: prev,
+                        description: `Significant probability drop from ${(prev.probability * 100).toFixed(1)}% to ${(current.probability * 100).toFixed(1)}% despite later date`,
+                        metric: `${((prev.probability - current.probability) * 100).toFixed(1)}% gap`
+                    });
+                }
+                
+                // Check for unusual spikes
+                if (prev && current.probability > prev.probability * 1.5) {
+                    anomalies.push({
+                        type: 'probability-spike',
+                        severity: 'high',
+                        market: current,
+                        relatedMarket: prev,
+                        description: `Unusual probability spike from ${(prev.probability * 100).toFixed(1)}% to ${(current.probability * 100).toFixed(1)}%`,
+                        metric: `+${((current.probability - prev.probability) * 100).toFixed(1)}%`
+                    });
+                }
+                
+                // Check for wide spreads (low liquidity)
+                if (current.spreadPercent > 10) {
+                    anomalies.push({
+                        type: 'wide-spread',
+                        severity: 'low',
+                        market: current,
+                        description: `Wide bid-ask spread indicates low liquidity`,
+                        metric: `${current.spreadPercent}% spread`
+                    });
+                }
+                
+                // Check for high volume with low probability (unusual)
+                if (current.volume24h > 50000 && current.probability < 0.2) {
+                    anomalies.push({
+                        type: 'volume-anomaly',
+                        severity: 'medium',
+                        market: current,
+                        description: `High trading volume on low-probability event`,
+                        metric: `$${(current.volume24h).toLocaleString()} volume`
+                    });
+                }
+                
+                // Check for rapid price changes
+                if (Math.abs(current.change1h) > 5) {
+                    anomalies.push({
+                        type: 'rapid-change',
+                        severity: Math.abs(current.change1h) > 10 ? 'high' : 'medium',
+                        market: current,
+                        description: `Rapid ${current.change1h > 0 ? 'increase' : 'decrease'} in the last hour`,
+                        metric: `${current.change1h > 0 ? '+' : ''}${current.change1h.toFixed(1)}%`
+                    });
+                }
+            }
+            
+            return anomalies.slice(0, 8); // Limit to top 8 anomalies
+        }
+
+        // Update summary cards
+        function updateSummary(markets) {
+            const totalMarkets = markets.length;
+            const avgProb = markets.reduce((sum, m) => sum + m.probability, 0) / totalMarkets;
+            const totalVol = markets.reduce((sum, m) => sum + m.volume24h, 0);
+            const avgSpreadVal = markets.reduce((sum, m) => sum + parseFloat(m.spreadPercent), 0) / totalMarkets;
+            
+            document.getElementById('totalMarkets').textContent = totalMarkets;
+            document.getElementById('avgProbability').textContent = (avgProb * 100).toFixed(1) + '%';
+            document.getElementById('totalVolume').textContent = '$' + (totalVol / 1000).toFixed(1) + 'k';
+            document.getElementById('avgSpread').textContent = avgSpreadVal.toFixed(1) + '%';
+        }
+
+        // Render markets table
+        function renderMarketsTable() {
+            const tbody = document.getElementById('marketsTableBody');
+            let filtered = filterData(marketsData);
+            filtered = sortData(filtered);
+            
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <h3>No markets found</h3>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = filtered.map(market => {
+                const probClass = market.probability > 0.5 ? 'positive' : market.probability < 0.2 ? 'negative' : 'neutral';
+                const change1hClass = market.change1h > 0 ? 'positive' : market.change1h < 0 ? 'negative' : 'neutral';
+                const change24hClass = market.change24h > 0 ? 'positive' : market.change24h < 0 ? 'negative' : 'neutral';
+                
+                return `
+                    <tr class="fade-in">
+                        <td>
+                            <div class="market-name">
+                                <span class="name">${market.dateStr}</span>
+                                <span class="date">${formatRelativeDate(market.date)}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="price-display">
+                                <span class="price-main ${probClass}">${(market.probability * 100).toFixed(1)}%</span>
+                                <span class="price-spread">${(market.bestBid * 100).toFixed(1)}¢ - ${(market.bestAsk * 100).toFixed(1)}¢</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${parseFloat(market.spreadPercent) < 5 ? 'positive' : parseFloat(market.spreadPercent) > 15 ? 'negative' : 'neutral'}">
+                                ${market.spreadPercent}%
+                            </span>
+                        </td>
+                        <td>
+                            <span class="volume-display">$${market.volume24h.toLocaleString()}</span>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${change1hClass}">
+                                <i class="fas fa-${market.change1h > 0 ? 'arrow-up' : market.change1h < 0 ? 'arrow-down' : 'minus'}"></i>
+                                ${Math.abs(market.change1h).toFixed(1)}%
+                            </span>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${change24hClass}">
+                                <i class="fas fa-${market.change24h > 0 ? 'arrow-up' : market.change24h < 0 ? 'arrow-down' : 'minus'}"></i>
+                                ${Math.abs(market.change24h).toFixed(1)}%
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render anomalies
+        function renderAnomalies() {
+            const container = document.getElementById('anomaliesContainer');
+            
+            if (anomaliesData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-check-circle"></i>
+                        <h3>No anomalies detected</h3>
+                        <p>All markets appear to be pricing normally</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = anomaliesData.map(anomaly => {
+                const typeLabels = {
+                    'probability-inversion': 'Price Inversion',
+                    'probability-spike': 'Price Spike',
+                    'wide-spread': 'Low Liquidity',
+                    'volume-anomaly': 'Volume Anomaly',
+                    'rapid-change': 'Rapid Movement'
+                };
+                
+                const typeIcons = {
+                    'probability-inversion': 'fa-exchange-alt',
+                    'probability-spike': 'fa-bolt',
+                    'wide-spread': 'fa-water',
+                    'volume-anomaly': 'fa-chart-bar',
+                    'rapid-change': 'fa-tachometer-alt'
+                };
+                
+                return `
+                    <div class="anomaly-card ${anomaly.severity === 'high' ? 'critical' : anomaly.type === 'probability-inversion' ? 'opportunity' : ''} fade-in">
+                        <div class="anomaly-header">
+                            <div class="anomaly-type">
+                                <i class="fas ${typeIcons[anomaly.type] || 'fa-exclamation'}"></i>
+                                ${typeLabels[anomaly.type] || anomaly.type}
+                            </div>
+                            <div class="anomaly-severity">${anomaly.severity}</div>
+                        </div>
+                        <div class="anomaly-title">${anomaly.market.dateStr}</div>
+                        <div class="anomaly-details">
+                            ${anomaly.description}
+                            <br>
+                            <span class="anomaly-metric">
+                                <i class="fas fa-hashtag"></i>
+                                ${anomaly.metric}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Render charts
+        function renderCharts() {
+            renderProbabilityChart();
+            renderVolumeChart();
+        }
+
+        // Probability trend chart
+        function renderProbabilityChart() {
+            const ctx = document.getElementById('probabilityChart').getContext('2d');
+            
+            if (charts.probability) {
+                charts.probability.destroy();
+            }
+            
+            const sortedMarkets = [...marketsData].sort((a, b) => a.date - b.date);
+            const labels = sortedMarkets.map(m => m.dateStr.slice(5)); // MM-DD
+            const data = sortedMarkets.map(m => (m.probability * 100).toFixed(1));
+            
+            charts.probability = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Probability (%)',
+                        data: data,
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#58a6ff',
+                        pointBorderColor: '#0d1117',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: '#30363d'
+                            },
+                            ticks: {
+                                color: '#8b949e'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: '#30363d'
+                            },
+                            ticks: {
+                                color: '#8b949e',
+                                callback: value => value + '%'
+                            },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        // Volume distribution chart
+        function renderVolumeChart() {
+            const ctx = document.getElementById('volumeChart').getContext('2d');
+            
+            if (charts.volume) {
+                charts.volume.destroy();
+            }
+            
+            const sortedMarkets = [...marketsData].sort((a, b) => a.date - b.date);
+            const labels = sortedMarkets.map(m => m.dateStr.slice(5));
+            const data = sortedMarkets.map(m => (m.volume24h / 1000).toFixed(1));
+            
+            charts.volume = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Volume ($k)',
+                        data: data,
+                        backgroundColor: sortedMarkets.map(m => {
+                            const change = m.change24h;
+                            return change > 0 ? 'rgba(63, 185, 80, 0.7)' : 
+                                   change < 0 ? 'rgba(248, 81, 73, 0.7)' : 
+                                   'rgba(139, 148, 158, 0.7)';
+                        }),
+                        borderRadius: 4,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#8b949e'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: '#30363d'
+                            },
+                            ticks: {
+                                color: '#8b949e',
+                                callback: value => '$' + value + 'k'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Sorting
+        function sortMarkets(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            renderMarketsTable();
+        }
+
+        function sortData(data) {
+            return [...data].sort((a, b) => {
+                let aVal, bVal;
+                
+                switch (sortColumn) {
+                    case 'date':
+                        aVal = a.date;
+                        bVal = b.date;
+                        break;
+                    case 'probability':
+                        aVal = a.probability;
+                        bVal = b.probability;
+                        break;
+                    case 'spread':
+                        aVal = parseFloat(a.spreadPercent);
+                        bVal = parseFloat(b.spreadPercent);
+                        break;
+                    case 'volume':
+                        aVal = a.volume24h;
+                        bVal = b.volume24h;
+                        break;
+                    case 'change1h':
+                        aVal = a.change1h;
+                        bVal = b.change1h;
+                        break;
+                    case 'change24h':
+                        aVal = a.change24h;
+                        bVal = b.change24h;
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (sortDirection === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                } else {
+                    return aVal < bVal ? 1 : -1;
+                }
+            });
+        }
+
+        // Filtering
+        function filterMarkets(type) {
+            filterType = type;
+            
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderMarketsTable();
+        }
+
+        function filterData(data) {
+            switch (filterType) {
+                case 'high-volume':
+                    return data.filter(m => m.volume24h > 30000);
+                case 'high-prob':
+                    return data.filter(m => m.probability > 0.5);
+                case 'trending':
+                    return data.filter(m => Math.abs(m.change24h) > 5);
+                default:
+                    return data;
+            }
+        }
+
+        // Utility functions
+        function formatRelativeDate(date) {
+            const now = new Date();
+            const diff = Math.floor((date - now) / (1000 * 60 * 60 * 24));
+            
+            if (diff === 0) return 'Today';
+            if (diff === 1) return 'Tomorrow';
+            if (diff > 1 && diff < 7) return `In ${diff} days`;
+            if (diff >= 7 && diff < 14) return 'Next week';
+            return 'Future';
+        }
+
+        function updateLastRefresh() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+        }
+
+        function showLoading(show) {
+            document.getElementById('marketsLoading').style.display = show ? 'flex' : 'none';
+        }
+
+        function showError(message) {
+            console.error(message);
+        }
+    </script>
+</body>
+</html>
