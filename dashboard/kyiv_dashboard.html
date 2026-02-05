@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kyiv Strike Markets Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-card: #1c2128;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-primary: #58a6ff;
+            --accent-secondary: #79c0ff;
+            --success: #3fb950;
+            --success-dim: #238636;
+            --danger: #f85149;
+            --danger-dim: #da3633;
+            --warning: #d29922;
+            --warning-dim: #9e6a03;
+            --border-color: #30363d;
+            --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-title i {
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .last-update {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .refresh-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .refresh-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .refresh-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .refresh-btn:hover {
+            background: var(--border-color);
+        }
+
+        .refresh-btn.loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .main-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+
+        .summary-label {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .summary-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .summary-delta {
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .summary-delta.positive { color: var(--success); }
+        .summary-delta.negative { color: var(--danger); }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .section-title i {
+            color: var(--accent-primary);
+        }
+
+        .markets-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .markets-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .markets-table th {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .markets-table th i {
+            margin-left: 0.25rem;
+            font-size: 0.625rem;
+        }
+
+        .markets-table td {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        .markets-table tr:hover {
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .market-name {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .market-name .name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .market-name .date {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .market-name .tag {
+            display: inline-block;
+            font-size: 0.625rem;
+            padding: 0.125rem 0.375rem;
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border-radius: 4px;
+            margin-top: 0.25rem;
+            width: fit-content;
+        }
+
+        .market-name .tag.closed {
+            background: var(--danger-dim);
+            color: var(--danger);
+        }
+
+        .price-display {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .price-main {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .price-spread {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .change-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-weight: 500;
+        }
+
+        .change-indicator.positive { color: var(--success); }
+        .change-indicator.negative { color: var(--danger); }
+        .change-indicator.neutral { color: var(--text-secondary); }
+
+        .volume-display {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .anomalies-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1rem;
+        }
+
+        .anomaly-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+            border-left: 4px solid var(--warning);
+        }
+
+        .anomaly-card.critical { border-left-color: var(--danger); }
+        .anomaly-card.opportunity { border-left-color: var(--success); }
+
+        .anomaly-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .anomaly-type {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--warning);
+        }
+
+        .anomaly-card.critical .anomaly-type { color: var(--danger); }
+        .anomaly-card.opportunity .anomaly-type { color: var(--success); }
+
+        .anomaly-severity {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--warning-dim);
+            color: var(--warning);
+        }
+
+        .anomaly-card.critical .anomaly-severity {
+            background: var(--danger-dim);
+            color: var(--danger);
+        }
+
+        .anomaly-card.opportunity .anomaly-severity {
+            background: var(--success-dim);
+            color: var(--success);
+        }
+
+        .anomaly-title {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .anomaly-details {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .anomaly-metric {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            background: var(--bg-tertiary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            margin: 0 0.125rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .chart-header {
+            margin-bottom: 1rem;
+        }
+
+        .chart-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state h3 {
+            font-size: 1.125rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 2rem;
+        }
+
+        .python-notice {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .python-notice code {
+            background: var(--bg-primary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            color: var(--accent-primary);
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .main-content {
+                padding: 1rem;
+            }
+            .markets-table {
+                font-size: 0.875rem;
+            }
+            .markets-table th,
+            .markets-table td {
+                padding: 0.75rem 0.5rem;
+            }
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            .anomalies-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title">
+                <i class="fas fa-crosshairs"></i>
+                <h1>Kyiv Strike Markets Dashboard</h1>
+            </div>
+            <div class="header-meta">
+                <div class="last-update">
+                    <i class="fas fa-clock"></i>
+                    <span id="lastUpdate">2026-02-05 22:04 UTC</span>
+                </div>
+                <div class="refresh-status">
+                    <div class="refresh-indicator"></div>
+                    <span>Data Embedded</span>
+                </div>
+                <a href="#" class="refresh-btn" onclick="location.reload()">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Reload Page</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="python-notice">
+            <i class="fas fa-info-circle"></i> 
+            This dashboard contains <strong>embedded data</strong> from the Gamma API. 
+            To refresh with live data, run: <code>python generate_dashboard.py</code>
+        </div>
+        
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="summary-label">Active Markets</div>
+                <div class="summary-value" id="totalMarkets">--</div>
+                <div class="summary-delta positive">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Live data</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Avg Probability</div>
+                <div class="summary-value" id="avgProbability">--</div>
+                <div class="summary-delta neutral">
+                    <i class="fas fa-minus"></i>
+                    <span>24h change</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Total Volume (24h)</div>
+                <div class="summary-value" id="totalVolume">--</div>
+                <div class="summary-delta positive">
+                    <i class="fas fa-arrow-up"></i>
+                    <span>Trading activity</span>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Avg Spread</div>
+                <div class="summary-value" id="avgSpread">--</div>
+                <div class="summary-delta neutral">
+                    <i class="fas fa-compress-arrows-alt"></i>
+                    <span>Bid-Ask spread</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Markets Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-list"></i>
+                    Strike Markets
+                </h2>
+            </div>
+            <div class="markets-container">
+                <table class="markets-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortMarkets('date')">Date <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('probability')">Probability <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('spread')">Spread <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('volume')">Volume (24h) <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('change1h')">1h Change <i class="fas fa-sort"></i></th>
+                            <th onclick="sortMarkets('change24h')">24h Change <i class="fas fa-sort"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="marketsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Anomalies Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Anomaly Detection
+                </h2>
+            </div>
+            <div class="anomalies-grid" id="anomaliesContainer">
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Market Analytics
+                </h2>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Probability Trend by Date</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="probabilityChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div class="chart-title">Volume Distribution</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="volumeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Kyiv Strike Markets Dashboard • Data from Polymarket Gamma API • Generated at 2026-02-05 22:04 UTC</p>
+        <p><a href="https://polymarket.com/geopolitics/ukraine" target="_blank" style="color: var(--accent-primary);">View on Polymarket</a></p>
+    </footer>
+
+    <script>
+        // Embedded Data (no external API calls needed)
+        const EMBEDDED_MARKETS = [{"id": "1277936", "title": "Will Russia strike Kyiv on February 3, 2026?", "question": "Will Russia strike Kyiv on February 3, 2026?", "date_str": "February 3", "display_date": "February 3", "date_iso": "2026-02-03", "probability": 1.0, "best_bid": 0.999, "best_ask": 1.0, "spread": 0.0010000000000000009, "spread_percent": 0.1, "volume_24h": 0.0, "change_1h": -0.1, "change_24h": 77.75, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-3-2026", "closed": true, "accepting_orders": false, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-3-2026"}, {"id": "1277951", "title": "Will Russia strike Kyiv on February 18, 2026?", "question": "Will Russia strike Kyiv on February 18, 2026?", "date_str": "February 18", "display_date": "February 18", "date_iso": "2026-02-18", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-18-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-18-2026"}, {"id": "1277952", "title": "Will Russia strike Kyiv on February 19, 2026?", "question": "Will Russia strike Kyiv on February 19, 2026?", "date_str": "February 19", "display_date": "February 19", "date_iso": "2026-02-19", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-19-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-19-2026"}, {"id": "1277955", "title": "Will Russia strike Kyiv on February 22, 2026?", "question": "Will Russia strike Kyiv on February 22, 2026?", "date_str": "February 22", "display_date": "February 22", "date_iso": "2026-02-22", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-22-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-22-2026"}, {"id": "1277961", "title": "Will Russia strike Kyiv on February 28, 2026?", "question": "Will Russia strike Kyiv on February 28, 2026?", "date_str": "February 28", "display_date": "February 28", "date_iso": "2026-02-28", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-28-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-28-2026"}, {"id": "1277934", "title": "Will Russia strike Kyiv on February 1, 2026?", "question": "Will Russia strike Kyiv on February 1, 2026?", "date_str": "February 1", "display_date": "February 1", "date_iso": "2026-02-01", "probability": 0.0, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": -0.1, "change_24h": -0.1, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-1-2026", "closed": true, "accepting_orders": false, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-1-2026"}, {"id": "1277937", "title": "Will Russia strike Kyiv on February 4, 2026?", "question": "Will Russia strike Kyiv on February 4, 2026?", "date_str": "February 4", "display_date": "February 4", "date_iso": "2026-02-04", "probability": 0.0005, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 22607.374728, "change_1h": 0.0, "change_24h": -0.1, "liquidity": 4408.24052, "slug": "will-russia-strike-kyiv-on-february-4-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-4-2026"}, {"id": "1277943", "title": "Will Russia strike Kyiv on February 10, 2026?", "question": "Will Russia strike Kyiv on February 10, 2026?", "date_str": "February 10", "display_date": "February 10", "date_iso": "2026-02-10", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-10-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-10-2026"}, {"id": "1277947", "title": "Will Russia strike Kyiv on February 14, 2026?", "question": "Will Russia strike Kyiv on February 14, 2026?", "date_str": "February 14", "display_date": "February 14", "date_iso": "2026-02-14", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-14-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-14-2026"}, {"id": "1277953", "title": "Will Russia strike Kyiv on February 20, 2026?", "question": "Will Russia strike Kyiv on February 20, 2026?", "date_str": "February 20", "display_date": "February 20", "date_iso": "2026-02-20", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-20-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-20-2026"}, {"id": "1277954", "title": "Will Russia strike Kyiv on February 21, 2026?", "question": "Will Russia strike Kyiv on February 21, 2026?", "date_str": "February 21", "display_date": "February 21", "date_iso": "2026-02-21", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-21-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-21-2026"}, {"id": "1277960", "title": "Will Russia strike Kyiv on February 27, 2026?", "question": "Will Russia strike Kyiv on February 27, 2026?", "date_str": "February 27", "display_date": "February 27", "date_iso": "2026-02-27", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-27-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-27-2026"}, {"id": "1277935", "title": "Will Russia strike Kyiv on February 2, 2026?", "question": "Will Russia strike Kyiv on February 2, 2026?", "date_str": "February 2", "display_date": "February 2", "date_iso": "2026-02-02", "probability": 0.0, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 100.0, "change_1h": 0.0, "change_24h": -0.15, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-2-2026", "closed": true, "accepting_orders": false, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-2-2026"}, {"id": "1277938", "title": "Will Russia strike Kyiv on February 5, 2026?", "question": "Will Russia strike Kyiv on February 5, 2026?", "date_str": "February 5", "display_date": "February 5", "date_iso": "2026-02-05", "probability": 0.0015, "best_bid": 0.001, "best_ask": 0.002, "spread": 0.001, "spread_percent": 50.0, "volume_24h": 51585.14358299999, "change_1h": -0.5, "change_24h": -16.3, "liquidity": 22492.57287, "slug": "will-russia-strike-kyiv-on-february-5-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-5-2026"}, {"id": "1277941", "title": "Will Russia strike Kyiv on February 8, 2026?", "question": "Will Russia strike Kyiv on February 8, 2026?", "date_str": "February 8", "display_date": "February 8", "date_iso": "2026-02-08", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-8-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-8-2026"}, {"id": "1277944", "title": "Will Russia strike Kyiv on February 11, 2026?", "question": "Will Russia strike Kyiv on February 11, 2026?", "date_str": "February 11", "display_date": "February 11", "date_iso": "2026-02-11", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-11-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-11-2026"}, {"id": "1277948", "title": "Will Russia strike Kyiv on February 15, 2026?", "question": "Will Russia strike Kyiv on February 15, 2026?", "date_str": "February 15", "display_date": "February 15", "date_iso": "2026-02-15", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-15-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-15-2026"}, {"id": "1277956", "title": "Will Russia strike Kyiv on February 23, 2026?", "question": "Will Russia strike Kyiv on February 23, 2026?", "date_str": "February 23", "display_date": "February 23", "date_iso": "2026-02-23", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-23-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-23-2026"}, {"id": "1277959", "title": "Will Russia strike Kyiv on February 26, 2026?", "question": "Will Russia strike Kyiv on February 26, 2026?", "date_str": "February 26", "display_date": "February 26", "date_iso": "2026-02-26", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-26-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-26-2026"}, {"id": "1277939", "title": "Will Russia strike Kyiv on February 6, 2026?", "question": "Will Russia strike Kyiv on February 6, 2026?", "date_str": "February 6", "display_date": "February 6", "date_iso": "2026-02-06", "probability": 0.2, "best_bid": 0.19, "best_ask": 0.21, "spread": 0.01999999999999999, "spread_percent": 9.52, "volume_24h": 2740.814789, "change_1h": -1.0, "change_24h": 2.5, "liquidity": 3536.6191, "slug": "will-russia-strike-kyiv-on-february-6-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-6-2026"}, {"id": "1277940", "title": "Will Russia strike Kyiv on February 7, 2026?", "question": "Will Russia strike Kyiv on February 7, 2026?", "date_str": "February 7", "display_date": "February 7", "date_iso": "2026-02-07", "probability": 0.265, "best_bid": 0.25, "best_ask": 0.28, "spread": 0.030000000000000027, "spread_percent": 10.71, "volume_24h": 1358.1888969999998, "change_1h": 0.0, "change_24h": 3.0, "liquidity": 1774.6903, "slug": "will-russia-strike-kyiv-on-february-7-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-7-2026"}, {"id": "1277942", "title": "Will Russia strike Kyiv on February 9, 2026?", "question": "Will Russia strike Kyiv on February 9, 2026?", "date_str": "February 9", "display_date": "February 9", "date_iso": "2026-02-09", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-9-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-9-2026"}, {"id": "1277945", "title": "Will Russia strike Kyiv on February 12, 2026?", "question": "Will Russia strike Kyiv on February 12, 2026?", "date_str": "February 12", "display_date": "February 12", "date_iso": "2026-02-12", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-12-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-12-2026"}, {"id": "1277946", "title": "Will Russia strike Kyiv on February 13, 2026?", "question": "Will Russia strike Kyiv on February 13, 2026?", "date_str": "February 13", "display_date": "February 13", "date_iso": "2026-02-13", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-13-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-13-2026"}, {"id": "1277949", "title": "Will Russia strike Kyiv on February 16, 2026?", "question": "Will Russia strike Kyiv on February 16, 2026?", "date_str": "February 16", "display_date": "February 16", "date_iso": "2026-02-16", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-16-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-16-2026"}, {"id": "1277950", "title": "Will Russia strike Kyiv on February 17, 2026?", "question": "Will Russia strike Kyiv on February 17, 2026?", "date_str": "February 17", "display_date": "February 17", "date_iso": "2026-02-17", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-17-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-17-2026"}, {"id": "1277957", "title": "Will Russia strike Kyiv on February 24, 2026?", "question": "Will Russia strike Kyiv on February 24, 2026?", "date_str": "February 24", "display_date": "February 24", "date_iso": "2026-02-24", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-24-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-24-2026"}, {"id": "1277958", "title": "Will Russia strike Kyiv on February 25, 2026?", "question": "Will Russia strike Kyiv on February 25, 2026?", "date_str": "February 25", "display_date": "February 25", "date_iso": "2026-02-25", "probability": 0.0, "best_bid": 0.0, "best_ask": 1.0, "spread": 1.0, "spread_percent": 100.0, "volume_24h": 0.0, "change_1h": 0.0, "change_24h": 0.0, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-25-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-25-2026"}];
+        const EMBEDDED_SUMMARY = {"total_markets": 26, "avg_probability": 5.6, "total_volume_24h": 78391.52, "avg_spread": 87.32, "generated_at": "2026-02-05T22:04:44.421130+00:00"};
+        const EMBEDDED_ANOMALIES = [{"type": "probability-inversion", "severity": "medium", "market": {"id": "1277937", "title": "Will Russia strike Kyiv on February 4, 2026?", "question": "Will Russia strike Kyiv on February 4, 2026?", "date_str": "February 4", "display_date": "February 4", "date_iso": "2026-02-04", "probability": 0.0005, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 22607.374728, "change_1h": 0.0, "change_24h": -0.1, "liquidity": 4408.24052, "slug": "will-russia-strike-kyiv-on-february-4-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-4-2026"}, "related_market": {"id": "1277936", "title": "Will Russia strike Kyiv on February 3, 2026?", "question": "Will Russia strike Kyiv on February 3, 2026?", "date_str": "February 3", "display_date": "February 3", "date_iso": "2026-02-03", "probability": 1.0, "best_bid": 0.999, "best_ask": 1.0, "spread": 0.0010000000000000009, "spread_percent": 0.1, "volume_24h": 0.0, "change_1h": -0.1, "change_24h": 77.75, "liquidity": 0.0, "slug": "will-russia-strike-kyiv-on-february-3-2026", "closed": true, "accepting_orders": false, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-3-2026"}, "description": "Significant probability drop from 100.0% to 0.1% despite later date", "metric": "100.0% gap"}, {"type": "wide-spread", "severity": "low", "market": {"id": "1277937", "title": "Will Russia strike Kyiv on February 4, 2026?", "question": "Will Russia strike Kyiv on February 4, 2026?", "date_str": "February 4", "display_date": "February 4", "date_iso": "2026-02-04", "probability": 0.0005, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 22607.374728, "change_1h": 0.0, "change_24h": -0.1, "liquidity": 4408.24052, "slug": "will-russia-strike-kyiv-on-february-4-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-4-2026"}, "description": "Wide bid-ask spread indicates low liquidity", "metric": "100.0% spread"}, {"type": "volume-anomaly", "severity": "medium", "market": {"id": "1277937", "title": "Will Russia strike Kyiv on February 4, 2026?", "question": "Will Russia strike Kyiv on February 4, 2026?", "date_str": "February 4", "display_date": "February 4", "date_iso": "2026-02-04", "probability": 0.0005, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 22607.374728, "change_1h": 0.0, "change_24h": -0.1, "liquidity": 4408.24052, "slug": "will-russia-strike-kyiv-on-february-4-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-4-2026"}, "description": "High trading volume on low-probability event", "metric": "$22,607 volume"}, {"type": "probability-spike", "severity": "high", "market": {"id": "1277938", "title": "Will Russia strike Kyiv on February 5, 2026?", "question": "Will Russia strike Kyiv on February 5, 2026?", "date_str": "February 5", "display_date": "February 5", "date_iso": "2026-02-05", "probability": 0.0015, "best_bid": 0.001, "best_ask": 0.002, "spread": 0.001, "spread_percent": 50.0, "volume_24h": 51585.14358299999, "change_1h": -0.5, "change_24h": -16.3, "liquidity": 22492.57287, "slug": "will-russia-strike-kyiv-on-february-5-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-5-2026"}, "related_market": {"id": "1277937", "title": "Will Russia strike Kyiv on February 4, 2026?", "question": "Will Russia strike Kyiv on February 4, 2026?", "date_str": "February 4", "display_date": "February 4", "date_iso": "2026-02-04", "probability": 0.0005, "best_bid": 0.0, "best_ask": 0.001, "spread": 0.001, "spread_percent": 100.0, "volume_24h": 22607.374728, "change_1h": 0.0, "change_24h": -0.1, "liquidity": 4408.24052, "slug": "will-russia-strike-kyiv-on-february-4-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-4-2026"}, "description": "Unusual probability spike from 0.1% to 0.1%", "metric": "+0.1%"}, {"type": "wide-spread", "severity": "low", "market": {"id": "1277938", "title": "Will Russia strike Kyiv on February 5, 2026?", "question": "Will Russia strike Kyiv on February 5, 2026?", "date_str": "February 5", "display_date": "February 5", "date_iso": "2026-02-05", "probability": 0.0015, "best_bid": 0.001, "best_ask": 0.002, "spread": 0.001, "spread_percent": 50.0, "volume_24h": 51585.14358299999, "change_1h": -0.5, "change_24h": -16.3, "liquidity": 22492.57287, "slug": "will-russia-strike-kyiv-on-february-5-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-5-2026"}, "description": "Wide bid-ask spread indicates low liquidity", "metric": "50.0% spread"}, {"type": "volume-anomaly", "severity": "medium", "market": {"id": "1277938", "title": "Will Russia strike Kyiv on February 5, 2026?", "question": "Will Russia strike Kyiv on February 5, 2026?", "date_str": "February 5", "display_date": "February 5", "date_iso": "2026-02-05", "probability": 0.0015, "best_bid": 0.001, "best_ask": 0.002, "spread": 0.001, "spread_percent": 50.0, "volume_24h": 51585.14358299999, "change_1h": -0.5, "change_24h": -16.3, "liquidity": 22492.57287, "slug": "will-russia-strike-kyiv-on-february-5-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-5-2026"}, "description": "High trading volume on low-probability event", "metric": "$51,585 volume"}, {"type": "probability-spike", "severity": "high", "market": {"id": "1277939", "title": "Will Russia strike Kyiv on February 6, 2026?", "question": "Will Russia strike Kyiv on February 6, 2026?", "date_str": "February 6", "display_date": "February 6", "date_iso": "2026-02-06", "probability": 0.2, "best_bid": 0.19, "best_ask": 0.21, "spread": 0.01999999999999999, "spread_percent": 9.52, "volume_24h": 2740.814789, "change_1h": -1.0, "change_24h": 2.5, "liquidity": 3536.6191, "slug": "will-russia-strike-kyiv-on-february-6-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-6-2026"}, "related_market": {"id": "1277938", "title": "Will Russia strike Kyiv on February 5, 2026?", "question": "Will Russia strike Kyiv on February 5, 2026?", "date_str": "February 5", "display_date": "February 5", "date_iso": "2026-02-05", "probability": 0.0015, "best_bid": 0.001, "best_ask": 0.002, "spread": 0.001, "spread_percent": 50.0, "volume_24h": 51585.14358299999, "change_1h": -0.5, "change_24h": -16.3, "liquidity": 22492.57287, "slug": "will-russia-strike-kyiv-on-february-5-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-5-2026"}, "description": "Unusual probability spike from 0.1% to 20.0%", "metric": "+19.9%"}, {"type": "wide-spread", "severity": "low", "market": {"id": "1277940", "title": "Will Russia strike Kyiv on February 7, 2026?", "question": "Will Russia strike Kyiv on February 7, 2026?", "date_str": "February 7", "display_date": "February 7", "date_iso": "2026-02-07", "probability": 0.265, "best_bid": 0.25, "best_ask": 0.28, "spread": 0.030000000000000027, "spread_percent": 10.71, "volume_24h": 1358.1888969999998, "change_1h": 0.0, "change_24h": 3.0, "liquidity": 1774.6903, "slug": "will-russia-strike-kyiv-on-february-7-2026", "closed": false, "accepting_orders": true, "url": "https://polymarket.com/event/will-russia-strike-kyiv-on-february-7-2026"}, "description": "Wide bid-ask spread indicates low liquidity", "metric": "10.71% spread"}];
+        
+        // State
+        let sortColumn = 'date';
+        let sortDirection = 'asc';
+        let charts = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeDashboard();
+        });
+
+        function initializeDashboard() {
+            updateSummary();
+            renderMarketsTable();
+            renderAnomalies();
+            renderCharts();
+        }
+
+        function updateSummary() {
+            const s = EMBEDDED_SUMMARY;
+            document.getElementById('totalMarkets').textContent = s.total_markets;
+            document.getElementById('avgProbability').textContent = s.avg_probability + '%';
+            document.getElementById('totalVolume').textContent = '$' + (s.total_volume_24h / 1000).toFixed(1) + 'k';
+            document.getElementById('avgSpread').textContent = s.avg_spread + '%';
+        }
+
+        function renderMarketsTable() {
+            const tbody = document.getElementById('marketsTableBody');
+            const sorted = sortData([...EMBEDDED_MARKETS]);
+            
+            if (sorted.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <h3>No markets found</h3>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = sorted.map(m => {
+                const probClass = m.probability > 0.5 ? 'positive' : m.probability < 0.2 ? 'negative' : 'neutral';
+                const change1hClass = m.change_1h > 0 ? 'positive' : m.change_1h < 0 ? 'negative' : 'neutral';
+                const change24hClass = m.change_24h > 0 ? 'positive' : m.change_24h < 0 ? 'negative' : 'neutral';
+                const statusTag = m.closed ? '<span class="tag closed">Closed</span>' : '';
+                
+                return `
+                    <tr>
+                        <td>
+                            <div class="market-name">
+                                <span class="name">${m.display_date}</span>
+                                <span class="date">${formatRelativeDate(m.date_iso)}</span>
+                                ${statusTag}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="price-display">
+                                <span class="price-main ${probClass}">${(m.probability * 100).toFixed(1)}%</span>
+                                <span class="price-spread">${(m.best_bid * 100).toFixed(1)}¢ - ${(m.best_ask * 100).toFixed(1)}¢</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${m.spread_percent < 5 ? 'positive' : m.spread_percent > 15 ? 'negative' : 'neutral'}">
+                                ${m.spread_percent}%
+                            </span>
+                        </td>
+                        <td>
+                            <span class="volume-display">$${m.volume_24h.toLocaleString()}</span>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${change1hClass}">
+                                <i class="fas fa-${m.change_1h > 0 ? 'arrow-up' : m.change_1h < 0 ? 'arrow-down' : 'minus'}"></i>
+                                ${Math.abs(m.change_1h).toFixed(1)}%
+                            </span>
+                        </td>
+                        <td>
+                            <span class="change-indicator ${change24hClass}">
+                                <i class="fas fa-${m.change_24h > 0 ? 'arrow-up' : m.change_24h < 0 ? 'arrow-down' : 'minus'}"></i>
+                                ${Math.abs(m.change_24h).toFixed(1)}%
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderAnomalies() {
+            const container = document.getElementById('anomaliesContainer');
+            
+            if (EMBEDDED_ANOMALIES.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-check-circle"></i>
+                        <h3>No anomalies detected</h3>
+                        <p>All markets appear to be pricing normally</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const typeLabels = {
+                'probability-inversion': 'Price Inversion',
+                'probability-spike': 'Price Spike',
+                'wide-spread': 'Low Liquidity',
+                'volume-anomaly': 'Volume Anomaly',
+                'rapid-change': 'Rapid Movement'
+            };
+            
+            const typeIcons = {
+                'probability-inversion': 'fa-exchange-alt',
+                'probability-spike': 'fa-bolt',
+                'wide-spread': 'fa-water',
+                'volume-anomaly': 'fa-chart-bar',
+                'rapid-change': 'fa-tachometer-alt'
+            };
+            
+            container.innerHTML = EMBEDDED_ANOMALIES.map(a => `
+                <div class="anomaly-card ${a.severity === 'high' ? 'critical' : a.type === 'probability-inversion' ? 'opportunity' : ''}">
+                    <div class="anomaly-header">
+                        <div class="anomaly-type">
+                            <i class="fas ${typeIcons[a.type] || 'fa-exclamation'}"></i>
+                            ${typeLabels[a.type] || a.type}
+                        </div>
+                        <div class="anomaly-severity">${a.severity}</div>
+                    </div>
+                    <div class="anomaly-title">${a.market.display_date}</div>
+                    <div class="anomaly-details">
+                        ${a.description}
+                        <br>
+                        <span class="anomaly-metric">
+                            <i class="fas fa-hashtag"></i>
+                            ${a.metric}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderCharts() {
+            renderProbabilityChart();
+            renderVolumeChart();
+        }
+
+        function renderProbabilityChart() {
+            const ctx = document.getElementById('probabilityChart').getContext('2d');
+            
+            if (charts.probability) {
+                charts.probability.destroy();
+            }
+            
+            const activeMarkets = EMBEDDED_MARKETS.filter(m => !m.closed || m.probability > 0);
+            const sorted = [...activeMarkets].sort((a, b) => new Date(a.date_iso) - new Date(b.date_iso)).slice(0, 14);
+            const labels = sorted.map(m => m.display_date);
+            const data = sorted.map(m => (m.probability * 100).toFixed(1));
+            
+            charts.probability = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Probability (%)',
+                        data: data,
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#58a6ff',
+                        pointBorderColor: '#0d1117',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#30363d' },
+                            ticks: { color: '#8b949e' }
+                        },
+                        y: {
+                            grid: { color: '#30363d' },
+                            ticks: { color: '#8b949e', callback: v => v + '%' },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderVolumeChart() {
+            const ctx = document.getElementById('volumeChart').getContext('2d');
+            
+            if (charts.volume) {
+                charts.volume.destroy();
+            }
+            
+            const activeMarkets = EMBEDDED_MARKETS.filter(m => !m.closed || m.probability > 0);
+            const sorted = [...activeMarkets].sort((a, b) => new Date(a.date_iso) - new Date(b.date_iso)).slice(0, 14);
+            const labels = sorted.map(m => m.display_date);
+            const data = sorted.map(m => (m.volume_24h / 1000).toFixed(1));
+            
+            charts.volume = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Volume ($k)',
+                        data: data,
+                        backgroundColor: sorted.map(m => {
+                            const c = m.change_24h;
+                            return c > 0 ? 'rgba(63, 185, 80, 0.7)' : c < 0 ? 'rgba(248, 81, 73, 0.7)' : 'rgba(139, 148, 158, 0.7)';
+                        }),
+                        borderRadius: 4,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#8b949e' }
+                        },
+                        y: {
+                            grid: { color: '#30363d' },
+                            ticks: { color: '#8b949e', callback: v => '$' + v + 'k' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function sortMarkets(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            renderMarketsTable();
+        }
+
+        function sortData(data) {
+            return [...data].sort((a, b) => {
+                let aVal, bVal;
+                switch (sortColumn) {
+                    case 'date': aVal = a.date_iso; bVal = b.date_iso; break;
+                    case 'probability': aVal = a.probability; bVal = b.probability; break;
+                    case 'spread': aVal = a.spread_percent; bVal = b.spread_percent; break;
+                    case 'volume': aVal = a.volume_24h; bVal = b.volume_24h; break;
+                    case 'change1h': aVal = a.change_1h; bVal = b.change_1h; break;
+                    case 'change24h': aVal = a.change_24h; bVal = b.change_24h; break;
+                    default: return 0;
+                }
+                return sortDirection === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
+            });
+        }
+
+        function formatRelativeDate(dateStr) {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const target = new Date(dateStr);
+            target.setHours(0, 0, 0, 0);
+            const diff = Math.floor((target - now) / (1000 * 60 * 60 * 24));
+            if (diff === 0) return 'Today';
+            if (diff === 1) return 'Tomorrow';
+            if (diff > 1 && diff < 7) return `In ${diff} days`;
+            if (diff >= 7 && diff < 14) return 'Next week';
+            if (diff < 0 && diff > -7) return `${Math.abs(diff)} days ago`;
+            if (diff <= -7) return 'Past';
+            return 'Future';
+        }
+    </script>
+</body>
+</html>
