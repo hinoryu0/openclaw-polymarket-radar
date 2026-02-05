@@ -162,11 +162,15 @@ def is_market_active(market: Market) -> Tuple[bool, str]:
     """Check if a market is active and tradable. Returns (is_active, reason)."""
     now = datetime.now(timezone.utc)
     
-    # 1. Already resolved
+    # 1. No liquidity (dead/unlisted markets)
+    if market.volume_24h == 0 and market.liquidity == 0:
+        return False, "no_liquidity"
+    
+    # 2. Already resolved
     if market.resolved:
         return False, "resolved"
     
-    # 2. Already ended (endDate in the past)
+    # 3. Already ended (endDate in the past)
     if market.end_date:
         try:
             # Parse ISO date string
@@ -176,11 +180,11 @@ def is_market_active(market: Market) -> Tuple[bool, str]:
         except (ValueError, TypeError):
             pass  # If we can't parse, assume it's not ended
     
-    # 3. Closed
+    # 4. Closed
     if market.closed:
         return False, "closed"
     
-    # 4. Not yet active (startDate in the future)
+    # 5. Not yet active (startDate in the future)
     if market.start_date:
         try:
             start_dt = datetime.fromisoformat(market.start_date.replace('Z', '+00:00'))
@@ -302,6 +306,7 @@ def fetch_kyiv_markets() -> Tuple[List[Market], Dict[str, int]]:
         "ended": 0,
         "closed": 0,
         "not_yet_active": 0,
+        "no_liquidity": 0,
         "active": 0
     }
     
@@ -389,6 +394,7 @@ def fetch_kyiv_markets() -> Tuple[List[Market], Dict[str, int]]:
     print(f"    - Ended: {filter_counts['ended']}")
     print(f"    - Closed: {filter_counts['closed']}")
     print(f"    - Not yet active: {filter_counts['not_yet_active']}")
+    print(f"    - No liquidity: {filter_counts['no_liquidity']}")
     
     return active_markets, filter_counts
 
@@ -498,7 +504,7 @@ def generate_html(markets: List[Market], summary: Dict[str, Any], anomalies: Lis
     # Build filter indicator text
     filter_indicator = ""
     if filter_counts:
-        total_filtered = filter_counts.get("resolved", 0) + filter_counts.get("ended", 0) + filter_counts.get("closed", 0) + filter_counts.get("not_yet_active", 0)
+        total_filtered = filter_counts.get("resolved", 0) + filter_counts.get("ended", 0) + filter_counts.get("closed", 0) + filter_counts.get("not_yet_active", 0) + filter_counts.get("no_liquidity", 0)
         if total_filtered > 0:
             parts = []
             if filter_counts.get("resolved", 0) > 0:
@@ -509,6 +515,8 @@ def generate_html(markets: List[Market], summary: Dict[str, Any], anomalies: Lis
                 parts.append(f"{filter_counts['closed']} closed")
             if filter_counts.get("not_yet_active", 0) > 0:
                 parts.append(f"{filter_counts['not_yet_active']} not yet active")
+            if filter_counts.get("no_liquidity", 0) > 0:
+                parts.append(f"{filter_counts['no_liquidity']} no liquidity")
             filter_indicator = f"Showing {len(markets)} active markets (filtered {total_filtered}: {', '.join(parts)})"
     
     generated_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
