@@ -55,6 +55,9 @@ class Market:
     closed: bool
     accepting_orders: bool
     url: str
+    resolved: bool
+    end_date: Optional[str]
+    start_date: Optional[str]
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -155,6 +158,40 @@ def discover_kyiv_event_slugs() -> List[str]:
     return sorted(all_slugs)
 
 
+def is_market_active(market: Market) -> Tuple[bool, str]:
+    """Check if a market is active and tradable. Returns (is_active, reason)."""
+    now = datetime.now(timezone.utc)
+    
+    # 1. Already resolved
+    if market.resolved:
+        return False, "resolved"
+    
+    # 2. Already ended (endDate in the past)
+    if market.end_date:
+        try:
+            # Parse ISO date string
+            end_dt = datetime.fromisoformat(market.end_date.replace('Z', '+00:00'))
+            if end_dt < now:
+                return False, "ended"
+        except (ValueError, TypeError):
+            pass  # If we can't parse, assume it's not ended
+    
+    # 3. Closed
+    if market.closed:
+        return False, "closed"
+    
+    # 4. Not yet active (startDate in the future)
+    if market.start_date:
+        try:
+            start_dt = datetime.fromisoformat(market.start_date.replace('Z', '+00:00'))
+            if start_dt > now:
+                return False, "not_yet_active"
+        except (ValueError, TypeError):
+            pass  # If we can't parse, assume it's active
+    
+    return True, "active"
+
+
 def parse_date_from_title(title: str, year: int = None) -> Tuple[str, str, datetime]:
     """Parse date from group item title like 'February 5'."""
     if year is None:
@@ -213,6 +250,11 @@ def parse_market_data(market: Dict[str, Any]) -> Optional[Market]:
         change_1h = float(market.get("oneHourPriceChange", 0) or 0)
         change_24h = float(market.get("oneDayPriceChange", 0) or 0)
         
+        # Get resolution and date fields
+        resolved = bool(market.get("resolved", False))
+        end_date = market.get("endDate")
+        start_date = market.get("startDate")
+        
         return Market(
             id=str(market.get("id", "")),
             title=market.get("question", date_title),
@@ -232,23 +274,36 @@ def parse_market_data(market: Dict[str, Any]) -> Optional[Market]:
             slug=market.get("slug", ""),
             closed=bool(market.get("closed", False)),
             accepting_orders=bool(market.get("acceptingOrders", True)),
-            url=f"https://polymarket.com/event/{market.get('slug', '')}"
+            url=f"https://polymarket.com/event/{market.get('slug', '')}",
+            resolved=resolved,
+            end_date=end_date,
+            start_date=start_date
         )
     except Exception as e:
         print(f"    Warning: Failed to parse market: {e}")
         return None
 
 
-def fetch_kyiv_markets() -> List[Market]:
-    """Fetch all Kyiv strike markets from Gamma API."""
+def fetch_kyiv_markets() -> Tuple[List[Market], Dict[str, int]]:
+    """Fetch all Kyiv strike markets from Gamma API and filter to active only."""
     print("Fetching Kyiv strike markets...")
     
     # Discover event slugs
     event_slugs = discover_kyiv_event_slugs()
     print(f"  Found {len(event_slugs)} potential event slugs")
     
-    markets: List[Market] = []
+    all_markets: List[Market] = []
+    active_markets: List[Market] = []
     seen_ids: Set[str] = set()
+    
+    # Filter counters
+    filter_counts = {
+        "resolved": 0,
+        "ended": 0,
+        "closed": 0,
+        "not_yet_active": 0,
+        "active": 0
+    }
     
     # Fetch markets from each event
     for slug in event_slugs:
@@ -274,9 +329,18 @@ def fetch_kyiv_markets() -> List[Market]:
                     if "strike" in q or "strike" in s or "attack" in q:
                         parsed = parse_market_data(m)
                         if parsed:
-                            markets.append(parsed)
+                            all_markets.append(parsed)
                             seen_ids.add(market_id)
-                            print(f"      Added: {parsed.display_date} ({parsed.probability:.1%})")
+                            
+                            # Check if market is active
+                            is_active, reason = is_market_active(parsed)
+                            filter_counts[reason] += 1
+                            
+                            if is_active:
+                                active_markets.append(parsed)
+                                print(f"      Added (active): {parsed.display_date} ({parsed.probability:.1%})")
+                            else:
+                                print(f"      Skipped ({reason}): {parsed.display_date}")
         except Exception as e:
             print(f"    Warning: Error fetching event {slug}: {e}")
     
@@ -300,41 +364,58 @@ def fetch_kyiv_markets() -> List[Market]:
                         if "strike" in q or "strike" in s or "attack" in q:
                             parsed = parse_market_data(m)
                             if parsed:
-                                markets.append(parsed)
+                                all_markets.append(parsed)
                                 seen_ids.add(market_id)
-                                print(f"    Found via search: {parsed.display_date}")
+                                
+                                # Check if market is active
+                                is_active, reason = is_market_active(parsed)
+                                filter_counts[reason] += 1
+                                
+                                if is_active:
+                                    active_markets.append(parsed)
+                                    print(f"    Found via search (active): {parsed.display_date}")
+                                else:
+                                    print(f"    Skipped via search ({reason}): {parsed.display_date}")
             except Exception as e:
                 print(f"    Warning: Search failed for '{term}': {e}")
     except Exception as e:
         print(f"  Warning: Market search error: {e}")
     
-    print(f"  Total unique markets: {len(markets)}")
-    return markets
-
-
-def calculate_summary(markets: List[Market]) -> Dict[str, Any]:
-    """Calculate summary statistics for the markets."""
-    active_markets = [m for m in markets if not m.closed or m.probability > 0]
+    total_filtered = len(all_markets) - len(active_markets)
+    print(f"\n  Total markets found: {len(all_markets)}")
+    print(f"  Active markets: {len(active_markets)}")
+    print(f"  Filtered out: {total_filtered}")
+    print(f"    - Resolved: {filter_counts['resolved']}")
+    print(f"    - Ended: {filter_counts['ended']}")
+    print(f"    - Closed: {filter_counts['closed']}")
+    print(f"    - Not yet active: {filter_counts['not_yet_active']}")
     
+    return active_markets, filter_counts
+
+
+def calculate_summary(markets: List[Market], filter_counts: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+    """Calculate summary statistics for the markets."""
     if not markets:
         return {
             "total_markets": 0,
             "avg_probability": 0,
             "total_volume_24h": 0,
             "avg_spread": 0,
-            "generated_at": datetime.now(timezone.utc).isoformat()
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "filter_counts": filter_counts or {}
         }
     
-    total_prob = sum(m.probability for m in active_markets)
+    total_prob = sum(m.probability for m in markets)
     total_vol = sum(m.volume_24h for m in markets)
-    total_spread = sum(m.spread_percent for m in active_markets)
+    total_spread = sum(m.spread_percent for m in markets)
     
     return {
-        "total_markets": len(active_markets),
-        "avg_probability": round((total_prob / len(active_markets)) * 100, 1) if active_markets else 0,
+        "total_markets": len(markets),
+        "avg_probability": round((total_prob / len(markets)) * 100, 1) if markets else 0,
         "total_volume_24h": round(total_vol, 2),
-        "avg_spread": round(total_spread / len(active_markets), 2) if active_markets else 0,
-        "generated_at": datetime.now(timezone.utc).isoformat()
+        "avg_spread": round(total_spread / len(markets), 2) if markets else 0,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "filter_counts": filter_counts or {}
     }
 
 
@@ -406,13 +487,29 @@ def detect_anomalies(markets: List[Market]) -> List[Dict[str, Any]]:
     return anomalies[:8]  # Limit to top 8
 
 
-def generate_html(markets: List[Market], summary: Dict[str, Any], anomalies: List[Dict[str, Any]]) -> str:
+def generate_html(markets: List[Market], summary: Dict[str, Any], anomalies: List[Dict[str, Any]], filter_counts: Optional[Dict[str, int]] = None) -> str:
     """Generate the standalone HTML dashboard with embedded data."""
     
     # Serialize data to JSON for embedding
     markets_json = json.dumps([m.to_dict() for m in markets], ensure_ascii=False)
     summary_json = json.dumps(summary, ensure_ascii=False)
     anomalies_json = json.dumps(anomalies, ensure_ascii=False)
+    
+    # Build filter indicator text
+    filter_indicator = ""
+    if filter_counts:
+        total_filtered = filter_counts.get("resolved", 0) + filter_counts.get("ended", 0) + filter_counts.get("closed", 0) + filter_counts.get("not_yet_active", 0)
+        if total_filtered > 0:
+            parts = []
+            if filter_counts.get("resolved", 0) > 0:
+                parts.append(f"{filter_counts['resolved']} resolved")
+            if filter_counts.get("ended", 0) > 0:
+                parts.append(f"{filter_counts['ended']} ended")
+            if filter_counts.get("closed", 0) > 0:
+                parts.append(f"{filter_counts['closed']} closed")
+            if filter_counts.get("not_yet_active", 0) > 0:
+                parts.append(f"{filter_counts['not_yet_active']} not yet active")
+            filter_indicator = f"Showing {len(markets)} active markets (filtered {total_filtered}: {', '.join(parts)})"
     
     generated_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     
@@ -1003,6 +1100,7 @@ def generate_html(markets: List[Market], summary: Dict[str, Any], anomalies: Lis
                     <i class="fas fa-list"></i>
                     Strike Markets
                 </h2>
+                <span style="color: var(--text-secondary); font-size: 0.875rem;">{filter_indicator}</span>
             </div>
             <div class="markets-container">
                 <table class="markets-table">
@@ -1374,18 +1472,19 @@ def main():
     print("=" * 60)
     
     # Fetch markets
-    markets = fetch_kyiv_markets()
+    markets, filter_counts = fetch_kyiv_markets()
     
     if not markets:
-        print("\nERROR: No markets found!")
+        print("\nERROR: No active markets found!")
         print("This could mean:")
         print("  - No Kyiv strike markets are currently active")
+        print("  - All markets have been resolved, ended, or closed")
         print("  - The API structure has changed")
         print("  - Network connectivity issues")
         return 1
     
     # Calculate summary
-    summary = calculate_summary(markets)
+    summary = calculate_summary(markets, filter_counts)
     print(f"\nSummary:")
     print(f"  Active Markets: {summary['total_markets']}")
     print(f"  Avg Probability: {summary['avg_probability']}%")
@@ -1400,7 +1499,7 @@ def main():
     
     # Generate HTML
     print("\nGenerating HTML...")
-    html = generate_html(markets, summary, anomalies)
+    html = generate_html(markets, summary, anomalies, filter_counts)
     
     # Write to file
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
