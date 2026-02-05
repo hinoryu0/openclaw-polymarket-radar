@@ -529,6 +529,19 @@
             color: var(--text-primary);
         }
 
+        /* Error State */
+        .error-state {
+            background: var(--danger-dim);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         /* Footer */
         .footer {
             text-align: center;
@@ -631,6 +644,8 @@
     </header>
 
     <main class="main-content">
+        <div id="errorContainer"></div>
+        
         <!-- Summary Cards -->
         <div class="summary-grid">
             <div class="summary-card">
@@ -759,7 +774,7 @@
         const CONFIG = {
             refreshInterval: 60000, // 60 seconds
             apiBaseUrl: 'https://gamma-api.polymarket.com',
-            kyivKeywords: ['kyiv', 'kiev', 'strike', 'ukraine capital'],
+            eventSlug: 'russia-strike-on-kyiv-municipality-on-252',
         };
 
         // State
@@ -797,14 +812,32 @@
             btn.classList.remove('loading');
         }
 
+        // Show error message
+        function showError(message) {
+            console.error(message);
+            const container = document.getElementById('errorContainer');
+            container.innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
         // Main data loading function
         async function loadData() {
             showLoading(true);
             
             try {
-                // For local development without CORS, use mock data
-                // In production with proper proxy, this would fetch from API
+                // Fetch real data from Gamma API
                 const data = await fetchKyivMarkets();
+                
+                if (data.length === 0) {
+                    throw new Error('No market data received from API');
+                }
                 
                 marketsData = data;
                 anomaliesData = detectAnomalies(data);
@@ -815,17 +848,10 @@
                 renderCharts();
                 
                 updateLastRefresh();
+                console.log('Loaded real API data:', data.length, 'markets');
             } catch (error) {
                 console.error('Failed to load data:', error);
-                showError('Failed to load market data. Using cached/fallback data.');
-                
-                // Use mock data as fallback
-                marketsData = getMockData();
-                anomaliesData = detectAnomalies(marketsData);
-                updateSummary(marketsData);
-                renderMarketsTable();
-                renderAnomalies();
-                renderCharts();
+                showError('Failed to load market data: ' + error.message);
             } finally {
                 showLoading(false);
             }
@@ -833,118 +859,115 @@
 
         // Fetch Kyiv markets from Gamma API
         async function fetchKyivMarkets() {
-            // Note: Direct API calls from browser may hit CORS issues
-            // In production, use a proxy server or CORS-enabled endpoint
+            const response = await fetch(`${CONFIG.apiBaseUrl}/events?slug=${CONFIG.eventSlug}`);
             
-            try {
-                // Attempt to fetch from Polymarket
-                const response = await fetch(`${CONFIG.apiBaseUrl}/events?active=true&closed=false&limit=100`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                const events = await response.json();
-                
-                // Filter for Kyiv-related events
-                const kyivEvents = events.filter(event => {
-                    const title = (event.title || '').toLowerCase();
-                    const description = (event.description || '').toLowerCase();
-                    return CONFIG.kyivKeywords.some(keyword => 
-                        title.includes(keyword) || description.includes(keyword)
-                    );
-                });
-                
-                return kyivEvents.map(parseEventToMarket);
-            } catch (error) {
-                console.warn('API fetch failed, using mock data:', error);
-                return getMockData();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+            
+            const events = await response.json();
+            
+            if (!Array.isArray(events) || events.length === 0) {
+                throw new Error('No events found for Kyiv strike markets');
+            }
+            
+            const event = events[0];
+            const markets = event.markets || [];
+            
+            console.log('API Response - Event:', event.title);
+            console.log('API Response - Markets count:', markets.length);
+            
+            // Filter to only active/open markets with data
+            const activeMarkets = markets.filter(m => m.active || m.volumeNum > 0);
+            
+            return activeMarkets.map(parseMarketToDisplayFormat);
         }
 
-        // Parse API event to market format
-        function parseEventToMarket(event) {
-            const outcomes = event.outcomes || [];
-            const yesOutcome = outcomes.find(o => o.name === 'Yes') || outcomes[0] || {};
-            const noOutcome = outcomes.find(o => o.name === 'No') || outcomes[1] || {};
+        // Parse API market data to display format
+        function parseMarketToDisplayFormat(market) {
+            // Parse outcomePrices - returns array like ["0.15", "0.85"] for [Yes, No]
+            let yesPrice = 0;
+            try {
+                const prices = JSON.parse(market.outcomePrices || '[0, 0]');
+                yesPrice = parseFloat(prices[0]) || 0;
+            } catch (e) {
+                yesPrice = 0;
+            }
             
-            const yesPrice = yesOutcome.price || 0.5;
-            const bestBid = yesOutcome.bestBid || yesPrice * 0.95;
-            const bestAsk = yesOutcome.bestAsk || yesPrice * 1.05;
+            // Calculate spread from bestBid and bestAsk
+            const bestBid = parseFloat(market.bestBid) || 0;
+            const bestAsk = parseFloat(market.bestAsk) || 0;
             const spread = bestAsk - bestBid;
+            const spreadPercent = bestAsk > 0 ? (spread / bestAsk * 100) : 0;
             
-            // Extract date from title
-            const dateMatch = event.title.match(/(\d{4}-\d{2}-\d{2})|(\w+ \d{1,2},? \d{4})|(\d{1,2}\/\d{1,2}\/\d{4})/);
-            const extractedDate = dateMatch ? new Date(dateMatch[0]) : new Date(event.endDate);
+            // Extract date from groupItemTitle (e.g., "February 4")
+            const dateStr = market.groupItemTitle || 'Unknown';
+            const year = new Date().getFullYear();
+            const date = parseDateFromTitle(dateStr, year);
+            
+            // Get volume and changes
+            const volume24h = market.volume24hr || 0;
+            const change1h = parseFloat(market.oneHourPriceChange) || 0;
+            const change24h = parseFloat(market.oneDayPriceChange) || 0;
             
             return {
-                id: event.id,
-                title: event.title,
-                date: extractedDate,
-                dateStr: extractedDate.toISOString().split('T')[0],
+                id: market.id,
+                title: market.question || dateStr,
+                date: date,
+                dateStr: date.toISOString().split('T')[0],
+                displayDate: dateStr,
                 probability: yesPrice,
                 bestBid: bestBid,
                 bestAsk: bestAsk,
                 spread: spread,
-                spreadPercent: (spread / yesPrice * 100).toFixed(2),
-                volume24h: event.volume24hr || Math.random() * 50000,
-                change1h: yesOutcome.priceChange1h || (Math.random() * 10 - 5),
-                change24h: yesOutcome.priceChange24h || (Math.random() * 20 - 10),
-                liquidity: event.liquidity || Math.random() * 100000,
-                slug: event.slug
+                spreadPercent: spreadPercent.toFixed(2),
+                volume24h: volume24h,
+                change1h: change1h * 100, // Convert to percentage
+                change24h: change24h * 100, // Convert to percentage
+                liquidity: market.liquidityNum || 0,
+                slug: market.slug,
+                closed: market.closed,
+                acceptingOrders: market.acceptingOrders
             };
         }
 
-        // Mock data for development/demo
-        function getMockData() {
-            const today = new Date();
-            const markets = [];
+        // Parse date from group item title
+        function parseDateFromTitle(title, year) {
+            const monthMap = {
+                'january': 0, 'february': 1, 'march': 2, 'april': 3, 'may': 4, 'june': 5,
+                'july': 6, 'august': 7, 'september': 8, 'october': 9, 'november': 10, 'december': 11
+            };
             
-            for (let i = 0; i < 14; i++) {
-                const date = new Date(today);
-                date.setDate(date.getDate() + i);
-                const dateStr = date.toISOString().split('T')[0];
-                
-                // Generate somewhat realistic probability curve
-                const baseProb = 15 + Math.sin(i * 0.5) * 10 + (i < 3 ? i * 5 : 15);
-                const probability = Math.max(5, Math.min(95, baseProb + Math.random() * 10 - 5));
-                
-                const spread = 0.5 + Math.random() * 3;
-                const bestBid = Math.max(0.01, (probability - spread/2) / 100);
-                const bestAsk = Math.min(0.99, (probability + spread/2) / 100);
-                
-                markets.push({
-                    id: `kyiv-${i}`,
-                    title: `Will there be a confirmed strike on Kyiv on ${dateStr}?`,
-                    date: date,
-                    dateStr: dateStr,
-                    probability: probability / 100,
-                    bestBid: bestBid,
-                    bestAsk: bestAsk,
-                    spread: bestAsk - bestBid,
-                    spreadPercent: ((bestAsk - bestBid) / bestBid * 100).toFixed(2),
-                    volume24h: 5000 + Math.random() * 95000,
-                    change1h: (Math.random() * 6 - 3),
-                    change24h: (Math.random() * 15 - 7.5),
-                    liquidity: 20000 + Math.random() * 180000,
-                    slug: `kyiv-strike-${dateStr}`
-                });
+            // Try to parse "February 4" format
+            const parts = title.toLowerCase().split(' ');
+            if (parts.length >= 2) {
+                const month = monthMap[parts[0]];
+                const day = parseInt(parts[1]);
+                if (month !== undefined && !isNaN(day)) {
+                    return new Date(year, month, day);
+                }
             }
             
-            return markets.sort((a, b) => a.date - b.date);
+            return new Date();
         }
 
         // Detect anomalies in market data
         function detectAnomalies(markets) {
             const anomalies = [];
             
-            for (let i = 0; i < markets.length; i++) {
-                const current = markets[i];
-                const prev = i > 0 ? markets[i - 1] : null;
-                const next = i < markets.length - 1 ? markets[i + 1] : null;
+            // Sort by date for comparison
+            const sorted = [...markets].sort((a, b) => a.date - b.date);
+            
+            for (let i = 0; i < sorted.length; i++) {
+                const current = sorted[i];
+                const prev = i > 0 ? sorted[i - 1] : null;
+                const next = i < sorted.length - 1 ? sorted[i + 1] : null;
+                
+                // Skip if market is closed
+                if (current.closed && current.probability === 0) continue;
                 
                 // Check for inverted probabilities (later date has lower probability)
-                if (prev && current.probability < prev.probability * 0.7) {
+                if (prev && current.probability < prev.probability * 0.7 && !current.closed) {
                     anomalies.push({
                         type: 'probability-inversion',
                         severity: 'medium',
@@ -956,7 +979,7 @@
                 }
                 
                 // Check for unusual spikes
-                if (prev && current.probability > prev.probability * 1.5) {
+                if (prev && current.probability > prev.probability * 1.5 && !current.closed) {
                     anomalies.push({
                         type: 'probability-spike',
                         severity: 'high',
@@ -968,7 +991,7 @@
                 }
                 
                 // Check for wide spreads (low liquidity)
-                if (current.spreadPercent > 10) {
+                if (parseFloat(current.spreadPercent) > 10 && !current.closed) {
                     anomalies.push({
                         type: 'wide-spread',
                         severity: 'low',
@@ -979,7 +1002,7 @@
                 }
                 
                 // Check for high volume with low probability (unusual)
-                if (current.volume24h > 50000 && current.probability < 0.2) {
+                if (current.volume24h > 10000 && current.probability < 0.1 && !current.closed) {
                     anomalies.push({
                         type: 'volume-anomaly',
                         severity: 'medium',
@@ -990,10 +1013,10 @@
                 }
                 
                 // Check for rapid price changes
-                if (Math.abs(current.change1h) > 5) {
+                if (Math.abs(current.change1h) > 10 && !current.closed) {
                     anomalies.push({
                         type: 'rapid-change',
-                        severity: Math.abs(current.change1h) > 10 ? 'high' : 'medium',
+                        severity: Math.abs(current.change1h) > 20 ? 'high' : 'medium',
                         market: current,
                         description: `Rapid ${current.change1h > 0 ? 'increase' : 'decrease'} in the last hour`,
                         metric: `${current.change1h > 0 ? '+' : ''}${current.change1h.toFixed(1)}%`
@@ -1006,10 +1029,11 @@
 
         // Update summary cards
         function updateSummary(markets) {
-            const totalMarkets = markets.length;
-            const avgProb = markets.reduce((sum, m) => sum + m.probability, 0) / totalMarkets;
+            const activeMarkets = markets.filter(m => !m.closed || m.probability > 0);
+            const totalMarkets = activeMarkets.length;
+            const avgProb = totalMarkets > 0 ? activeMarkets.reduce((sum, m) => sum + m.probability, 0) / totalMarkets : 0;
             const totalVol = markets.reduce((sum, m) => sum + m.volume24h, 0);
-            const avgSpreadVal = markets.reduce((sum, m) => sum + parseFloat(m.spreadPercent), 0) / totalMarkets;
+            const avgSpreadVal = totalMarkets > 0 ? activeMarkets.reduce((sum, m) => sum + parseFloat(m.spreadPercent || 0), 0) / totalMarkets : 0;
             
             document.getElementById('totalMarkets').textContent = totalMarkets;
             document.getElementById('avgProbability').textContent = (avgProb * 100).toFixed(1) + '%';
@@ -1039,13 +1063,15 @@
                 const probClass = market.probability > 0.5 ? 'positive' : market.probability < 0.2 ? 'negative' : 'neutral';
                 const change1hClass = market.change1h > 0 ? 'positive' : market.change1h < 0 ? 'negative' : 'neutral';
                 const change24hClass = market.change24h > 0 ? 'positive' : market.change24h < 0 ? 'negative' : 'neutral';
+                const statusTag = market.closed ? '<span class="tag" style="background: var(--danger-dim); color: var(--danger);">Closed</span>' : '';
                 
                 return `
                     <tr class="fade-in">
                         <td>
                             <div class="market-name">
-                                <span class="name">${market.dateStr}</span>
+                                <span class="name">${market.displayDate}</span>
                                 <span class="date">${formatRelativeDate(market.date)}</span>
+                                ${statusTag}
                             </div>
                         </td>
                         <td>
@@ -1120,7 +1146,7 @@
                             </div>
                             <div class="anomaly-severity">${anomaly.severity}</div>
                         </div>
-                        <div class="anomaly-title">${anomaly.market.dateStr}</div>
+                        <div class="anomaly-title">${anomaly.market.displayDate}</div>
                         <div class="anomaly-details">
                             ${anomaly.description}
                             <br>
@@ -1148,8 +1174,10 @@
                 charts.probability.destroy();
             }
             
-            const sortedMarkets = [...marketsData].sort((a, b) => a.date - b.date);
-            const labels = sortedMarkets.map(m => m.dateStr.slice(5)); // MM-DD
+            // Filter to active markets only
+            const activeMarkets = marketsData.filter(m => !m.closed || m.probability > 0);
+            const sortedMarkets = [...activeMarkets].sort((a, b) => a.date - b.date).slice(0, 14);
+            const labels = sortedMarkets.map(m => m.displayDate);
             const data = sortedMarkets.map(m => (m.probability * 100).toFixed(1));
             
             charts.probability = new Chart(ctx, {
@@ -1211,8 +1239,9 @@
                 charts.volume.destroy();
             }
             
-            const sortedMarkets = [...marketsData].sort((a, b) => a.date - b.date);
-            const labels = sortedMarkets.map(m => m.dateStr.slice(5));
+            const activeMarkets = marketsData.filter(m => !m.closed || m.probability > 0);
+            const sortedMarkets = [...activeMarkets].sort((a, b) => a.date - b.date).slice(0, 14);
+            const labels = sortedMarkets.map(m => m.displayDate);
             const data = sortedMarkets.map(m => (m.volume24h / 1000).toFixed(1));
             
             charts.volume = new Chart(ctx, {
@@ -1331,11 +1360,11 @@
         function filterData(data) {
             switch (filterType) {
                 case 'high-volume':
-                    return data.filter(m => m.volume24h > 30000);
+                    return data.filter(m => m.volume24h > 10000);
                 case 'high-prob':
-                    return data.filter(m => m.probability > 0.5);
+                    return data.filter(m => m.probability > 0.3);
                 case 'trending':
-                    return data.filter(m => Math.abs(m.change24h) > 5);
+                    return data.filter(m => Math.abs(m.change24h) > 10);
                 default:
                     return data;
             }
@@ -1344,12 +1373,18 @@
         // Utility functions
         function formatRelativeDate(date) {
             const now = new Date();
-            const diff = Math.floor((date - now) / (1000 * 60 * 60 * 24));
+            now.setHours(0, 0, 0, 0);
+            const target = new Date(date);
+            target.setHours(0, 0, 0, 0);
+            
+            const diff = Math.floor((target - now) / (1000 * 60 * 60 * 24));
             
             if (diff === 0) return 'Today';
             if (diff === 1) return 'Tomorrow';
             if (diff > 1 && diff < 7) return `In ${diff} days`;
             if (diff >= 7 && diff < 14) return 'Next week';
+            if (diff < 0 && diff > -7) return `${Math.abs(diff)} days ago`;
+            if (diff <= -7) return 'Past';
             return 'Future';
         }
 
@@ -1360,10 +1395,6 @@
 
         function showLoading(show) {
             document.getElementById('marketsLoading').style.display = show ? 'flex' : 'none';
-        }
-
-        function showError(message) {
-            console.error(message);
         }
     </script>
 </body>
