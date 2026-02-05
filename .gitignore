@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local state / outputs
+memory/*-state.json
+memory/reports/
+
+# OS/editor
+.DS_Store
+.vscode/
